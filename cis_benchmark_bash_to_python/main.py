@@ -4,6 +4,7 @@ A CIS OS benchmarking app, with flexible configuration and output options.
 Results are `true` if the test passed, and `false` if the test failed.
 """
 
+import platform
 import os
 import datetime
 import subprocess
@@ -15,7 +16,7 @@ from pprint import pprint
 
 # Set up logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 
 # Probe report global variable
 report = {
@@ -23,6 +24,9 @@ report = {
         "description": "CIS OS benchmarking report",
         "date": "{:%Y-%m-%d %H:%M:%S}".format(datetime.datetime.now()),
         "user": os.getlogin(),
+        "total_probes": 0,
+        "total_passed": 0,
+        "total_errors": 0,
     }
 }
 
@@ -62,7 +66,12 @@ def run_probe(probe):
 
 
 def add_to_report(this_section, probe, analysis):
-    """Build the dic with the probe report"""
+    """Build the dict with the probe report"""
+
+    # Increment the total_probes and total_passed counters
+    report["metadata"]["total_probes"] += 1
+    if analysis["result"]:
+        report["metadata"]["total_passed"] += 1
 
     if this_section not in report:
         report[this_section] = {}
@@ -79,20 +88,34 @@ def analyze_result_of_probe(result, probe):
         "description": probe["description"],
         "result": "",
     }
-    if probe["expected"] == "grep-negative":
-        logger.info(f"In EXPECTED condition: probe['expected']: {probe['expected']}")
-        logger.info(f"result.stdout: {result.stdout}")
-        logger.info(f"result.stderr: {result.stderr}")
+
+    # Begin with known expected conditions conditionals starting with logic flips
+    if probe["expected"].startswith("--"):
+
         # Negative grep condition, if not found then the test passed
-        if not result.stdout and not result.stderr:
-            analysis["result"] = True
-            return analysis
+        if probe["expected"] == "--grep-negative":
+            if not result.stdout and not result.stderr:
+                analysis["result"] = True
+                return analysis
+            else:
+                analysis["result"] = False
+                return analysis
         else:
+            logger.error(
+                "Unknown 'expected' condition found in `analyze_results_of_probe()`, defaulting to failed."
+            )
+            logger.info(
+                "Unknown Condition: Add another conditional to handle this `expected` value."
+            )
+            logger.error(f"Probe: {probe}")
+            logger.error(f"result.stdout: {result.stdout}")
+            logger.error(f"result.stderr: {result.stderr}")
+            report["metadata"]["total_errors"] += 1
             analysis["result"] = False
             return analysis
+
+    # Assume the expected condition is a leading stdout or stderr string
     elif probe["expected"]:
-        # This only tests if the expected condition for the beginning of the
-        # string is known.  This may not be enough.
         if result.stdout.decode("utf-8").startswith(
             probe["expected"]
         ) or result.stderr.decode("utf-8").startswith(probe["expected"]):
@@ -101,8 +124,9 @@ def analyze_result_of_probe(result, probe):
         else:
             analysis["result"] = False
             return analysis
+
+    # Handle some common output states and default results
     else:
-        # Common output states and default results
         if result.stderr:
             analysis["result"] = False
             return analysis
@@ -123,30 +147,88 @@ def analyze_result_of_probe(result, probe):
         elif result.stdout.decode("utf-8"):
             analysis["result"] = True
             return analysis
+        else:
+            logger.error(
+                f"CATCHALL: Unknown result state in `analyze_results_of_probe()`. Defaulting to False."
+            )
+            logger.error(f"Probe: {probe}")
+            logger.error(f"result.stdout: {result.stdout}")
+            logger.error(f"result.stderr: {result.stderr}")
+            report["metadata"]["total_errors"] += 1
+            analysis["result"] = False
+            return analysis
 
 
 @click.command()
 @click.option("--yaml_file", default="probes.yaml", help="YAML file to read")
+@click.option("--full_output", help="Full output of the probes", is_flag=True)
+@click.option("--quiet", "-q", help="Quiet mode only writes", is_flag=True)
 @click.option("--output_file", help="Output file to write")
-@click.option("--remote_log_storage", help="Remote log storage location (S3)")
+@click.option(
+    "--remote_audit_storage",
+    default="audit_report.json",  # Default to local storage
+    help="Remote audit storage location (S3)",
+)
+@click.option(
+    "--output_file",
+    default="audit_report.json",  # Default to local storage
+    help="Filename to write the audit report to",
+)
+@click.option(
+    "--ssh_remote_location", help="Remote location to run the probes using SSH."
+)
+@click.option(
+    "--ssm_remote_location", help="Remote location to run the probes using AWS SSM."
+)
 @click.option("--list_probes", "-l", help="List all probes", is_flag=True)
 @click.option("--hardening_level", "-hl", default=0, help="Hardening level to apply")
-def main(yaml_file, output_file, remote_log_storage, list_probes, hardening_level):
+@click.option("--debug", "-d", help="Debug mode", is_flag=True)
+def main(
+    yaml_file,
+    full_output,
+    quiet,
+    output_file,
+    remote_audit_storage,
+    ssh_remote_location,
+    ssm_remote_location,
+    list_probes,
+    hardening_level,
+    debug,
+):
     """
     A CIS OS benchmarking app, with flexible configuration and output options.
 
     Results are `true` if the test passed, and `false` if the test failed.
     """
+
+    # BEGIN: Interpret the command line options
+    if debug:
+        logging.basicConfig(level=logging.DEBUG)
+
     report["metadata"]["hardening_level"] = hardening_level
-    report["metadata"]["remote_log_storage"] = remote_log_storage
+    report["metadata"]["remote_log_storage"] = remote_audit_storage
     report["metadata"]["output_file"] = output_file
     report["metadata"]["yaml_file"] = yaml_file
+
     probes = read_yaml_file(yaml_file)
+
+    # Throw a warning if you are running the wrong YAML locally
+    if (
+        probes["targeting"]["system"] != platform.system()
+        and not ssh_remote_location
+        and not ssm_remote_location
+    ):
+        logger.warning(
+            f"YAML file is for {probes['targeting']['system']} but local system is {platform.system()}"
+        )
+
     if list_probes:
         list(probes)
         return
     else:
-        for section in probes["cis"]:
+        # Default to running the probes and writing the report
+        report["metadata"]["audited_system"] = platform.platform()
+        for section in probes["probes"]:
             this_section = f"{section['section_name']} - {section['description']}"
             for probe in section["probes"]:
                 if hardening_level >= probe["level"]:
@@ -158,7 +240,16 @@ def main(yaml_file, output_file, remote_log_storage, list_probes, hardening_leve
                         logger.error(
                             f"Error adding to report.  This section: {this_section}, probe: {probe}, analysis: {analysis}"
                         )
-                    print(
-                        f"  {probe['subsection_name']} {probe['description']} -- {analysis['result']}"
-                    )
-    print(json.dumps(report, indent=2))
+        # Write the report to a file
+        if output_file:
+            try:
+                with open(output_file, "w") as file:
+                    file.write(json.dumps(report, indent=2))
+            except Exception as e:
+                logger.error(f"Error writing to output file: {e}")
+    if full_output and not quiet:
+        print(json.dumps(report, indent=2))
+    elif not quiet:
+        print(json.dumps(report["metadata"], indent=2))
+
+    # END: Interpret the command line options

@@ -1,4 +1,6 @@
-cis:
+targeting:
+  system: "Linux"
+probes:
   - section_name: "1.1.1"
     description: "Disable Unused Filesystems"
     probes:
@@ -12,7 +14,7 @@ cis:
         description: "lsmod cramfs"
         level: 0
         command: "lsmod | grep cramfs"
-        expected: "grep-negative"
+        expected: "--grep-negative"
       - subsection_name: "1.1.1.2.1"
         description: "modprobe freevxf"
         level: 0
@@ -22,7 +24,67 @@ cis:
         description: "lsmod freevxf"
         level: 0
         command: "lsmod | grep freevxf"
-        expected: "grep-negative"
+        expected: "--grep-negative"
+      - subsection_name: "1.1.1.3.1"
+        description: "modprobe jffs2"
+        level: 0
+        command: "modprobe -n -v jffs2"
+        expected: "modprobe: FATAL: Module jffs2 not found in directory"
+      - subsection_name: "1.1.1.3.2"
+        description: "lsmod jffs2"
+        level: 0
+        command: "lsmod | grep jffs2"
+        expected: "--grep-negative"
+      - subsection_name: "1.1.1.4.1"
+        description: "modprobe hfs"
+        level: 0
+        command: "modprobe -n -v hfs"
+        expected: "modprobe: FATAL: Module hfs not found in directory"
+      - subsection_name: "1.1.1.4.2"
+        description: "lsmod hfs"
+        level: 0
+        command: "lsmod | grep hfs"
+        expected: "--grep-negative"
+      - subsection_name: "1.1.1.5.1"
+        description: "modprobe hfsplus"
+        level: 0
+        command: "modprobe -n -v hfsplus"
+        expected: "modprobe: FATAL: Module hfsplus not found in directory"
+      - subsection_name: "1.1.1.5.2"
+        description: "lsmod hfsplus"
+        level: 0
+        command: "lsmod | grep hfsplus"
+        expected: "--grep-negative"
+      - subsection_name: "1.1.1.6.1"
+        description: "modprobe squashfs"
+        level: 0
+        command: "modprobe -n -v squashfs"
+        expected: "modprobe: FATAL: Module squashfs not found in directory"
+      - subsection_name: "1.1.1.6.2"
+        description: "lsmod squashfs"
+        level: 0
+        command: "lsmod | grep squashfs"
+        expected: "--grep-negative"
+      - subsection_name: "1.1.1.7.1"
+        description: "modprobe udf"
+        level: 0
+        command: "modprobe -n -v udf"
+        expected: "modprobe: FATAL: Module udf not found in directory"
+      - subsection_name: "1.1.1.7.2"
+        description: "lsmod udf"
+        level: 0
+        command: "lsmod | grep udf"
+        expected: "--grep-negative"
+      - subsection_name: "1.1.1.8.1"
+        description: "modprobe vfat"
+        level: 0
+        command: "modprobe -n -v vfat"
+        expected: "modprobe: FATAL: Module vfat not found in directory"
+      - subsection_name: "1.1.1.8.2"
+        description: "lsmod vfat"
+        level: 0
+        command: "lsmod | grep vfat"
+        expected: "--grep-negative"
   - section_name: "1.1.2"
     description: "/tmp setup"
     probes:

@@ -172,3 +172,5 @@ cython_debug/
 
 # Local scripts
 sync.sh
+# Default local output file
+audit_report.json
