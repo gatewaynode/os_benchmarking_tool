@@ -1,5 +1,7 @@
 """
 A CIS OS benchmarking app, with flexible configuration and output options.
+
+Results are `true` if the test passed, and `false` if the test failed.
 """
 
 import os
@@ -8,8 +10,12 @@ import subprocess
 import yaml
 import click
 import json
+import logging
 from pprint import pprint
 
+# Set up logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 # Probe report global variable
 report = {
@@ -47,8 +53,11 @@ def run_probe(probe):
             stderr=subprocess.PIPE,
             shell=True,
         )
+        logger.info(f"result.stdout: {result.stdout}")
+        logger.info(f"result.stderr: {result.stderr}")
         return result
     except subprocess.CalledProcessError as e:
+        logger.error(f"Error running probe command with function `run_probe()`: {e}")
         return e
 
 
@@ -70,18 +79,36 @@ def analyze_result_of_probe(result, probe):
         "description": probe["description"],
         "result": "",
     }
-    if probe["expected_result"]:
-        if result.stdout.decode("utf-8").strip() == probe["expected_result"]:
+    if probe["expected"] == "grep-negative":
+        logger.info(f"In EXPECTED condition: probe['expected']: {probe['expected']}")
+        logger.info(f"result.stdout: {result.stdout}")
+        logger.info(f"result.stderr: {result.stderr}")
+        # Negative grep condition, if not found then the test passed
+        if not result.stdout and not result.stderr:
+            analysis["result"] = True
+            return analysis
+        else:
+            analysis["result"] = False
+            return analysis
+    elif probe["expected"]:
+        # This only tests if the expected condition for the beginning of the
+        # string is known.  This may not be enough.
+        if result.stdout.decode("utf-8").startswith(
+            probe["expected"]
+        ) or result.stderr.decode("utf-8").startswith(probe["expected"]):
             analysis["result"] = True
             return analysis
         else:
             analysis["result"] = False
             return analysis
     else:
+        # Common output states and default results
         if result.stderr:
             analysis["result"] = False
             return analysis
-        elif result.stdout.decode("utf-8").startswith("usage"):
+        elif result.stdout.decode("utf-8").startswith("usage") or result.stdout.decode(
+            "utf-8"
+        ).startswith("Usage"):
             analysis["result"] = False
             return analysis
         elif result.stdout.decode("utf-8").startswith("error"):
@@ -107,6 +134,8 @@ def analyze_result_of_probe(result, probe):
 def main(yaml_file, output_file, remote_log_storage, list_probes, hardening_level):
     """
     A CIS OS benchmarking app, with flexible configuration and output options.
+
+    Results are `true` if the test passed, and `false` if the test failed.
     """
     report["metadata"]["hardening_level"] = hardening_level
     report["metadata"]["remote_log_storage"] = remote_log_storage
@@ -123,7 +152,12 @@ def main(yaml_file, output_file, remote_log_storage, list_probes, hardening_leve
                 if hardening_level >= probe["level"]:
                     result = run_probe(probe)
                     analysis = analyze_result_of_probe(result, probe)
-                    add_to_report(this_section, probe, analysis)
+                    if this_section and probe and analysis:
+                        add_to_report(this_section, probe, analysis)
+                    else:
+                        logger.error(
+                            f"Error adding to report.  This section: {this_section}, probe: {probe}, analysis: {analysis}"
+                        )
                     print(
                         f"  {probe['subsection_name']} {probe['description']} -- {analysis['result']}"
                     )
