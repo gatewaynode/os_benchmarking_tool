@@ -27,6 +27,7 @@ report = {
         "total_probes": 0,
         "total_passed": 0,
         "total_errors": 0,
+        "total_skipped_probes": 0,
     }
 }
 
@@ -161,8 +162,8 @@ def analyze_result_of_probe(result, probe):
 
 @click.command()
 @click.option("--yaml_file", default="probes.yaml", help="YAML file to read")
-@click.option("--full_output", help="Full output of the probes", is_flag=True)
-@click.option("--quiet", "-q", help="Quiet mode only writes", is_flag=True)
+@click.option("--full_output", help="Full CLI output of the probes", is_flag=True)
+@click.option("--quiet", "-q", help="Quiet mode only writes to the file", is_flag=True)
 @click.option("--output_file", help="Output file to write")
 @click.option(
     "--remote_audit_storage",
@@ -181,7 +182,7 @@ def analyze_result_of_probe(result, probe):
     "--ssm_remote_location", help="Remote location to run the probes using AWS SSM."
 )
 @click.option("--list_probes", "-l", help="List all probes", is_flag=True)
-@click.option("--hardening_level", "-hl", default=0, help="Hardening level to apply")
+@click.option("--hardening_level", "-hl", default=1, help="Hardening level to apply")
 @click.option("--debug", "-d", help="Debug mode", is_flag=True)
 def main(
     yaml_file,
@@ -214,7 +215,7 @@ def main(
 
     # Throw a warning if you are running the wrong YAML locally
     if (
-        probes["targeting"]["system"] != platform.system()
+        probes["metadata"]["system"] != platform.system()
         and not ssh_remote_location
         and not ssm_remote_location
     ):
@@ -240,6 +241,8 @@ def main(
                         logger.error(
                             f"Error adding to report.  This section: {this_section}, probe: {probe}, analysis: {analysis}"
                         )
+                else:
+                    report["metadata"]["total_skipped_probes"] += 1
         # Write the report to a file
         if output_file:
             try:
@@ -253,3 +256,7 @@ def main(
         print(json.dumps(report["metadata"], indent=2))
 
     # END: Interpret the command line options
+
+
+if __name__ == "__main__":
+    main()
