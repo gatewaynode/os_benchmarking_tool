@@ -98,10 +98,10 @@ probes:
 
 # ROADMAP
 
--[x] Read YAML defined sets of os hardening tests
--[x] Output results in a JSON file
--[x] Provide metadata and structure to provide a complete audit report
--[ ] Remote audit report storage
--[ ] Remote execution over SSH
--[ ] Remote execution over SSM
--[ ] Expand library of YAML files
+- [x] Read YAML defined sets of os hardening tests
+- [x] Output results in a JSON file
+- [x] Provide metadata and structure to provide a complete audit report
+- [ ] Remote audit report storage
+- [ ] Remote execution over SSH
+- [ ] Remote execution over SSM
+- [ ] Expand library of YAML files
