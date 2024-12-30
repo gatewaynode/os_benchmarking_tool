@@ -1,10 +1,10 @@
 # OS Benchmarking Tool
 
 More specifically a CLI app that is both an audit runner for OS level probes 
-and tests, the original intent is auditing security hardening benchmarks like 
-CIS but with customization flexiblity. This reads a collection of probes 
-defined in a YAML file and writes the results to a JSON file by default, 
-stdout support is a basic display of the JSON on the CLI.
+and tests, and report data manager.  The original intent is auditing security 
+hardening benchmarks like CIS but with customization flexiblity. This reads a 
+collection of probes defined in a YAML file and writes the results to a JSON 
+file by default, stdout support is a basic display of the JSON on the CLI.
 
 ## MVP Status
 

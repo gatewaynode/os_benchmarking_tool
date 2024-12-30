@@ -12,6 +12,7 @@ import yaml
 import click
 import json
 import logging
+from tqdm import tqdm
 from pprint import pprint
 
 # Set up logging
@@ -28,6 +29,8 @@ report = {
         "total_passed": 0,
         "total_errors": 0,
         "total_skipped_probes": 0,
+        "total_potential_risk": 0,
+        "total_assessed_risk": 0,
     }
 }
 
@@ -43,7 +46,7 @@ def read_yaml_file(yaml_file):
 
 def list(probes):
     """List the sections and subsections and the probe descriptions"""
-    for section in probes["cis"]:
+    for section in probes["probes"]:
         print(f"{section['section_name']} -- {section['description']}")
         for probe in section["probes"]:
             print(f"  {probe['subsection_name']} -- {probe['description']}")
@@ -66,18 +69,29 @@ def run_probe(probe):
         return e
 
 
-def add_to_report(this_section, probe, analysis):
+def add_to_report(section, probe, probes_meta, analysis):
     """Build the dict with the probe report"""
 
     # Increment the total_probes and total_passed counters
     report["metadata"]["total_probes"] += 1
+    for tag in section["tags"]:
+        if tag.endswith("risk"):
+            report["metadata"]["total_potential_risk"] += probes_meta[
+                "risk_tag_scores"
+            ][tag]
     if analysis["result"]:
         report["metadata"]["total_passed"] += 1
+    else:
+        for tag in section["tags"]:
+            if tag.endswith("risk"):
+                report["metadata"]["total_assessed_risk"] += probes_meta[
+                    "risk_tag_scores"
+                ][tag]
 
-    if this_section not in report:
-        report[this_section] = {}
+    if section["section_name"] not in report:
+        report[section["section_name"]] = {}
 
-    report[this_section][probe["subsection_name"]] = {
+    report[section["section_name"]][probe["subsection_name"]] = {
         "description": probe["description"],
         "result": analysis["result"],
     }
@@ -220,7 +234,7 @@ def main(
         and not ssm_remote_location
     ):
         logger.warning(
-            f"YAML file is for {probes['targeting']['system']} but local system is {platform.system()}"
+            f"YAML file is for {probes['metadata']['system']} but local system is {platform.system()}"
         )
 
     if list_probes:
@@ -229,20 +243,39 @@ def main(
     else:
         # Default to running the probes and writing the report
         report["metadata"]["audited_system"] = platform.platform()
-        for section in probes["probes"]:
-            this_section = f"{section['section_name']} - {section['description']}"
-            for probe in section["probes"]:
-                if hardening_level >= probe["level"]:
-                    result = run_probe(probe)
-                    analysis = analyze_result_of_probe(result, probe)
-                    if this_section and probe and analysis:
-                        add_to_report(this_section, probe, analysis)
+
+        # Provide interactive feedback for interactive use of the tool
+        if not quiet:
+            for section in tqdm(probes["probes"], desc=probes["metadata"]["benchmark"]):
+                for probe in tqdm(
+                    section["probes"],
+                    desc=f"Testing section: {section['section_name']}",
+                ):
+                    if hardening_level >= probe["level"]:
+                        result = run_probe(probe)
+                        analysis = analyze_result_of_probe(result, probe)
+                        if section and probe and analysis:
+                            add_to_report(section, probe, probes["metadata"], analysis)
+                        else:
+                            logger.error(
+                                f"Error adding to report.  This section: {section['section_name']} - {section['description']}, probe: {probe}, analysis: {analysis}"
+                            )
                     else:
-                        logger.error(
-                            f"Error adding to report.  This section: {this_section}, probe: {probe}, analysis: {analysis}"
-                        )
-                else:
-                    report["metadata"]["total_skipped_probes"] += 1
+                        report["metadata"]["total_skipped_probes"] += 1
+        else:
+            for section in probes["probes"]:
+                for probe in section["probes"]:
+                    if hardening_level >= probe["level"]:
+                        result = run_probe(probe)
+                        analysis = analyze_result_of_probe(result, probe)
+                        if section and probe and analysis:
+                            add_to_report(section, probe, probes["metadata"], analysis)
+                        else:
+                            logger.error(
+                                f"Error adding to report.  This section: {section['section_name']} - {section['description']}, probe: {probe}, analysis: {analysis}"
+                            )
+                    else:
+                        report["metadata"]["total_skipped_probes"] += 1
         # Write the report to a file
         if output_file:
             try:
