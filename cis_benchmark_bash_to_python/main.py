@@ -8,6 +8,7 @@ import platform
 import os
 import datetime
 import subprocess
+import sys
 import yaml
 import click
 import json
@@ -42,17 +43,33 @@ def read_yaml_file(yaml_file):
             return yaml.safe_load(file)
         except yaml.YAMLError as exc:
             print(exc)
+            sys.exit(1)
 
 
-def list(probes):
+def list_probes(probes):
     """List the sections and subsections and the probe descriptions"""
-    for section in probes["probes"]:
+    for section in probes["sections"]:
         print(f"{section['section_name']} -- {section['description']}")
         for probe in section["probes"]:
             print(f"  {probe['subsection_name']} -- {probe['description']}")
 
 
-def run_probe(probe):
+def probe_section_runner(probes, section, full_output, quiet, hardening_level):
+    for probe in section["probes"]:
+        if hardening_level >= probe["level"]:
+            result = run_local_probe(probe)
+            analysis = analyze_result_of_probe(result, probe)
+            if section and probe and analysis:
+                add_to_report(section, probe, probes["metadata"], analysis)
+            else:
+                logger.error(
+                    f"Error adding to report.  This section: {section['section_name']} - {section['description']}, probe: {probe}, analysis: {analysis}"
+                )
+        else:
+            report["metadata"]["total_skipped_probes"] += 1
+
+
+def run_local_probe(probe):
     """Run the probe and return the result"""
     try:
         result = subprocess.run(
@@ -67,6 +84,16 @@ def run_probe(probe):
     except subprocess.CalledProcessError as e:
         logger.error(f"Error running probe command with function `run_probe()`: {e}")
         return e
+
+
+def run_ssh_probe(probe, ssh_remote_location):
+    """Run the probe remotely over SSH and return the result"""
+    pass
+
+
+def run_ssm_probe(probe, ssm_remote_location):
+    """Run the probe remotely over AWS SSM and return the result"""
+    pass
 
 
 def add_to_report(section, probe, probes_meta, analysis):
@@ -175,10 +202,9 @@ def analyze_result_of_probe(result, probe):
 
 
 @click.command()
-@click.option("--yaml_file", default="probes.yaml", help="YAML file to read")
+@click.option("--yaml_file", default="RHEL_8_probes.yaml", help="YAML file to read")
 @click.option("--full_output", help="Full CLI output of the probes", is_flag=True)
 @click.option("--quiet", "-q", help="Quiet mode only writes to the file", is_flag=True)
-@click.option("--output_file", help="Output file to write")
 @click.option(
     "--remote_audit_storage",
     default="audit_report.json",  # Default to local storage
@@ -195,7 +221,7 @@ def analyze_result_of_probe(result, probe):
 @click.option(
     "--ssm_remote_location", help="Remote location to run the probes using AWS SSM."
 )
-@click.option("--list_probes", "-l", help="List all probes", is_flag=True)
+@click.option("--list", "-l", help="List all probes", is_flag=True)
 @click.option("--hardening_level", "-hl", default=1, help="Hardening level to apply")
 @click.option("--debug", "-d", help="Debug mode", is_flag=True)
 def main(
@@ -206,7 +232,7 @@ def main(
     remote_audit_storage,
     ssh_remote_location,
     ssm_remote_location,
-    list_probes,
+    list,
     hardening_level,
     debug,
 ):
@@ -237,47 +263,28 @@ def main(
             f"YAML file is for {probes['metadata']['system']} but local system is {platform.system()}"
         )
 
-    if list_probes:
-        list(probes)
+    if list:
+        list_probes(probes)
         return
     else:
         # Default to running the probes and writing the report
         report["metadata"]["audited_system"] = platform.platform()
 
-        # Provide interactive feedback for interactive use of the tool
         if not quiet:
-            for section in tqdm(probes["probes"], desc=probes["metadata"]["benchmark"]):
-                for probe in tqdm(
-                    section["probes"],
-                    desc=f"Testing section: {section['section_name']}",
-                ):
-                    if hardening_level >= probe["level"]:
-                        result = run_probe(probe)
-                        analysis = analyze_result_of_probe(result, probe)
-                        if section and probe and analysis:
-                            add_to_report(section, probe, probes["metadata"], analysis)
-                        else:
-                            logger.error(
-                                f"Error adding to report.  This section: {section['section_name']} - {section['description']}, probe: {probe}, analysis: {analysis}"
-                            )
-                    else:
-                        report["metadata"]["total_skipped_probes"] += 1
+            for section in tqdm(
+                probes["sections"], desc=probes["metadata"]["benchmark"]
+            ):
+                probe_section_runner(
+                    probes, section, full_output, quiet, hardening_level
+                )
         else:
-            for section in probes["probes"]:
-                for probe in section["probes"]:
-                    if hardening_level >= probe["level"]:
-                        result = run_probe(probe)
-                        analysis = analyze_result_of_probe(result, probe)
-                        if section and probe and analysis:
-                            add_to_report(section, probe, probes["metadata"], analysis)
-                        else:
-                            logger.error(
-                                f"Error adding to report.  This section: {section['section_name']} - {section['description']}, probe: {probe}, analysis: {analysis}"
-                            )
-                    else:
-                        report["metadata"]["total_skipped_probes"] += 1
+            for section in probes["sections"]:
+                probe_section_runner(
+                    probes, section, full_output, quiet, hardening_level
+                )
+
         # Write the report to a file
-        if output_file:
+        if output_file and len(report) > 1:
             try:
                 with open(output_file, "w") as file:
                     file.write(json.dumps(report, indent=2))

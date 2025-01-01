@@ -1,0 +1,88 @@
+metadata:
+  system: "Linux"
+  benchmark: "CIS RHEL 8 Benchmark"
+  risk_tag_scores:
+    low_risk: 1
+    medium_risk: 2
+    high_risk: 4
+    critical_risk: 8
+sections:
+  - section_name: "1.1.1"
+    description: "Ensure Unused Filesystems are disabled"
+    tags: 
+      - "filesystems"
+      - "low_risk"
+    probes:
+      - subsection_name: "1.1.1.1.0"
+        description: "modprobe cramfs"
+        level: 0
+        command: "modprobe -n -v cramfs"
+        expected: "modprobe: FATAL: Module cramfs not found in directory"
+      - subsection_name: "1.1.1.1.1"
+        description: "lsmod cramfs"
+        level: 0
+        command: "lsmod | grep cramfs"
+        expected: "--grep-negative"
+      - subsection_name: "1.1.1.2.0"
+        description: "modprobe squashfs"
+        level: 0
+        command: "modprobe -n -v squashfs"
+        expected: "modprobe: FATAL: Module squashfs not found in directory"
+      - subsection_name: "1.1.1.2.1"
+        description: "lsmod squashfs"
+        level: 0
+        command: "lsmod | grep squashfs"
+        expected: "--grep-negative"
+  - section_name: "1.1.2"
+    description: "/tmp configuration"
+    tags: 
+      - "directories"
+      - "medium_risk"
+    probes:
+      - subsection_name: "1.1.2.1"
+        description: "Ensure /tmp on its own partition"
+        level: 0
+        command: "mount | grep '^/tmp' "
+        expected: ""
+      - subsection_name: "1.1.2.2"
+        description: "Ensure nodev option set on /tmp"
+        level: 0
+        command: "mount | grep ^/tmp | grep nodev "
+        expected: ""
+      - subsection_name: "1.1.5.3"
+        description: "Ensure noexec option set on /tmp"
+        level: 0
+        command: "mount | grep ^/tmp | grep noexec "
+        expected: ""
+      - subsection_name: "1.1.2.4"
+        description: "Ensure nosuid option set on /tmp"
+        level: 0
+        command: "mount | grep ^/tmp | grep nosuid "
+        expected: ""
+  - section_name: "1.1.7"
+    description: "/home setup"
+    tags: 
+      - "directories"
+      - "low_risk"
+    probes:
+      - subsection_name: "1.1.7.1"
+        description: "Ensure /home on its own partition"
+        level: 1
+        command: "mount | grep '^/home' "
+        expected: ""
+      - subsection_name: "1.1.7.2"
+        description: "Ensure nodev option set on /home partition"
+        level: 0
+        command: "mount | grep ^/var/log/audit | grep nodev "
+        expected: ""
+      - subsection_name: "1.1.7.4"
+        description: "Ensure nosuid option set on /home partition"
+        level: 0
+        command: "mount | grep ^/var/log/audit | grep nosuid "
+        expected: ""
+      - subsection_name: "1.1.7.5"
+        description: "Ensure usrquota option set on /home partition"
+        level: 0
+        command: "findmnt --kernel /home | grep usrquota"
+        expected: ""
+  

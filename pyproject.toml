@@ -12,6 +12,7 @@ click = "^8.1.8"
 pyyaml = "^6.0.2"
 fabric = "^3.2.2"
 tqdm = "^4.67.1"
+pytest = "^8.3.4"
 
 [tool.poetry.scripts]
 cis = "cis_benchmark_bash_to_python.main:main"
